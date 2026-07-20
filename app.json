@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "trivio-app",
+    "name": "Trivio",
     "slug": "trivio-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "trivioapp",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon"
     },

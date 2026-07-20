@@ -1,56 +1,60 @@
-# Welcome to your Expo app 👋
+# Trivio — Group Trip Expense Tracker
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Split trip costs with your crew — no spreadsheets, no awkward IOUs. Built with
+**React Native + Expo (SDK 57, expo-router, TypeScript)** in a minimalist
+blue-and-white design.
 
-## Get started
+## Features
 
-1. Install dependencies
+- **Email/password auth** — register and log in; sessions persist across restarts.
+- **Trip groups** — set a destination, estimated days, and a shared IDR budget.
+- **6-letter invite codes** — share the code; friends join and log into the same pot.
+- **Categorized expenses** — Food & Drinks, Transport, Accommodation, Activities,
+  Shopping, Other — with per-category breakdown bars and who-paid tracking.
+- **Trivio Assistant** — a chat that answers from the trip's live numbers:
+  remaining budget, per-person split and who owes whom, daily pace projection,
+  biggest categories, latest expenses.
+- **Interactive by default** — springy press feedback, staggered entrance
+  animations, animated budget bars (amber at 80%, red when blown), parallax trip
+  header, typing indicator, pop-in success screens.
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run it
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- Press `w` for the browser, or scan the QR code with **Expo Go** on your phone.
 
-### Other setup steps
+## Project structure
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```
+src/
+  app/                  # expo-router routes
+    _layout.tsx         # providers + auth-guarded stack
+    login.tsx, register.tsx
+    (tabs)/             # Trips · Assistant · Profile
+    create-group.tsx    # trip form → animated success + invite code
+    join-group.tsx      # enter a 6-letter code
+    group/[id].tsx      # parallax trip detail: budget, members, categories, expenses
+    add-expense.tsx     # amount, category grid, paid-by, note
+  ai/assistant.ts       # rule-based Q&A over trip stats
+  components/           # reusable animated UI (Button, Input, ProgressBar, …)
+  context/AppContext.tsx# state + AsyncStorage persistence (mock backend)
+  data/categories.ts    # expense categories
+  theme/theme.ts        # colors, radii, shadows, typography
+  utils/                # currency/date formatting, invite codes, trip stats
+```
 
-## Learn more
+## Demo-build notes
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **Storage is local.** The whole "database" (accounts, groups, expenses) lives in
+  AsyncStorage, so invite codes work between accounts on the *same device*. To go
+  multi-device, keep the `AppContext` API and swap its internals for a real
+  backend (Supabase / Firebase / your own server) — screens won't change.
+- **The assistant is offline.** `src/ai/assistant.ts` computes answers locally.
+  To upgrade to a real LLM, send the group data + question to your backend and
+  call the model there — never ship a model API key inside the app bundle.
+- Passwords are stored in plain text on-device because this is a demo. Use real
+  auth before shipping.
