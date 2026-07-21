@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Button from '@/components/Button';
+import CalendarRangePicker from '@/components/CalendarRangePicker';
 import FadeSlideIn from '@/components/FadeSlideIn';
 import Input from '@/components/Input';
 import PressableScale from '@/components/PressableScale';
@@ -22,6 +23,7 @@ import ScreenHeader from '@/components/ScreenHeader';
 import { useApp } from '@/context/AppContext';
 import { colors, radius, type, USE_NATIVE_DRIVER } from '@/theme/theme';
 import { Group } from '@/types';
+import { daysBetweenInclusive, formatDateRange } from '@/utils/dates';
 import { digitsOnly, formatAmountInput } from '@/utils/format';
 
 export default function CreateGroupScreen() {
@@ -31,22 +33,25 @@ export default function CreateGroupScreen() {
 
   const [name, setName] = useState('');
   const [destination, setDestination] = useState('');
-  const [days, setDays] = useState('');
+  const [startDate, setStartDate] = useState<number | null>(null);
+  const [endDate, setEndDate] = useState<number | null>(null);
   const [budget, setBudget] = useState(''); // raw digits
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Group | null>(null);
   const [copied, setCopied] = useState(false);
   const pop = useRef(new Animated.Value(0)).current;
 
+  const dayCount = startDate != null && endDate != null ? daysBetweenInclusive(startDate, endDate) : 0;
+
   const submit = () => {
     setError(null);
-    const d = Number(days);
     const b = Number(budget);
     if (name.trim().length < 2) return setError('Give the trip a name — e.g. "Bali Getaway".');
     if (destination.trim().length < 2) return setError('Where are you going? Add a destination.');
-    if (!d || d < 1 || d > 90) return setError('Estimated days should be between 1 and 90.');
+    if (startDate == null || endDate == null) return setError('Pick your trip start and end dates.');
     if (!b) return setError('Set a group budget so Trivio can track your pace.');
-    const res = createGroup({ name, destination, days: d, budget: b });
+    const res = createGroup({ name, destination, startDate, endDate, budget: b });
     if (!res.ok) return setError(res.error);
     setCreated(res.value);
     Animated.spring(pop, {
@@ -104,6 +109,8 @@ export default function CreateGroupScreen() {
     );
   }
 
+  const datesChosen = startDate != null && endDate != null;
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -127,15 +134,31 @@ export default function CreateGroupScreen() {
             placeholder="Bali, Indonesia"
             containerStyle={styles.field}
           />
-          <Input
-            label="Estimated days"
-            value={days}
-            onChangeText={(t) => setDays(digitsOnly(t))}
-            placeholder="5"
-            keyboardType="number-pad"
-            maxLength={2}
-            containerStyle={styles.field}
-          />
+
+          <Text style={styles.fieldLabel}>Trip dates</Text>
+          <PressableScale
+            onPress={() => setPickerOpen(true)}
+            style={[styles.dateField, datesChosen && styles.dateFieldFilled]}>
+            <Ionicons
+              name="calendar-outline"
+              size={20}
+              color={datesChosen ? colors.primary : colors.faint}
+            />
+            <Text style={[styles.datePlaceholder, datesChosen && styles.dateValue]}>
+              {datesChosen ? formatDateRange(startDate!, endDate!) : 'Add start & end dates'}
+            </Text>
+            {datesChosen ? (
+              <View style={styles.daysBadge}>
+                <Text style={styles.daysBadgeText}>
+                  {dayCount} day{dayCount === 1 ? '' : 's'}
+                </Text>
+              </View>
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+            )}
+          </PressableScale>
+          <Text style={styles.helper}>Trivio estimates the trip length from these dates.</Text>
+
           <Input
             label="Group budget"
             value={formatAmountInput(budget)}
@@ -153,6 +176,18 @@ export default function CreateGroupScreen() {
           <Button title="Create trip group" onPress={submit} />
         </FadeSlideIn>
       </ScrollView>
+
+      <CalendarRangePicker
+        visible={pickerOpen}
+        initialStart={startDate}
+        initialEnd={endDate}
+        onCancel={() => setPickerOpen(false)}
+        onConfirm={(s, e) => {
+          setStartDate(s);
+          setEndDate(e);
+          setPickerOpen(false);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -161,8 +196,30 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
   form: { paddingHorizontal: 20, paddingTop: 8 },
   field: { marginBottom: 16 },
+  fieldLabel: { ...type.label, marginBottom: 7 },
+  dateField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 52,
+    borderWidth: 1.5,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    paddingHorizontal: 14,
+  },
+  dateFieldFilled: { borderColor: colors.primary },
+  datePlaceholder: { flex: 1, fontSize: 15, color: colors.faint },
+  dateValue: { color: colors.ink, fontWeight: '600' },
+  daysBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  daysBadgeText: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
   prefix: { fontSize: 15, fontWeight: '700', color: colors.slate },
-  helper: { ...type.caption, lineHeight: 18, marginBottom: 16 },
+  helper: { ...type.caption, lineHeight: 18, marginTop: 8, marginBottom: 16 },
   error: { fontSize: 13, color: colors.danger, marginBottom: 12 },
   successWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   checkCircle: {

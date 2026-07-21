@@ -27,6 +27,10 @@ export type Group = {
   id: string;
   name: string;
   destination: string;
+  // Local start-of-day timestamps. `days` is derived from the range
+  // (inclusive) and kept denormalized for cheap display.
+  startDate: number;
+  endDate: number;
   days: number;
   budget: number;
   currency: 'IDR';
@@ -36,6 +40,10 @@ export type Group = {
   createdBy: string;
   members: Member[];
   expenses: Expense[];
+  // Lifecycle: null while the trip is open. Set when the trip is closed —
+  // either manually by a member or automatically once its end date passes.
+  closedAt: number | null;
+  closedReason: 'manual' | 'ended' | null;
 };
 
 export type ChatMessage = {

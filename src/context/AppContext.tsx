@@ -10,8 +10,10 @@ import {
 } from 'react';
 
 import { CategoryId, Group, User } from '@/types';
+import { daysBetweenInclusive } from '@/utils/dates';
 import { generateInviteCode, uid } from '@/utils/format';
 import { imageForDestination } from '@/utils/images';
+import { isTripClosed, migrateGroup, sweepAutoClose, tripPhase } from '@/utils/trip';
 
 // Local mock backend: the whole "database" lives in AsyncStorage on this
 // device, so invite codes work across accounts on the same phone. To go to
@@ -44,12 +46,15 @@ type AppContextValue = {
   createGroup: (input: {
     name: string;
     destination: string;
-    days: number;
+    startDate: number;
+    endDate: number;
     budget: number;
   }) => Result<Group>;
   joinGroup: (code: string) => Result<Group>;
   addExpense: (groupId: string, expense: NewExpense) => void;
   deleteExpense: (groupId: string, expenseId: string) => void;
+  closeTrip: (groupId: string) => void;
+  reopenTrip: (groupId: string) => void;
   getGroup: (groupId: string) => Group | null;
 };
 
@@ -67,7 +72,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           AsyncStorage.getItem(DB_KEY),
           AsyncStorage.getItem(SESSION_KEY),
         ]);
-        if (rawDb) setDb({ ...EMPTY_DB, ...JSON.parse(rawDb) });
+        if (rawDb) {
+          const parsed: Db = { ...EMPTY_DB, ...JSON.parse(rawDb) };
+          // Backfill date/close fields on legacy trips, then close any whose
+          // dates have already passed while the app wasn't running.
+          const migrated = parsed.groups.map(migrateGroup);
+          setDb({ ...parsed, groups: sweepAutoClose(migrated).groups });
+        }
         if (rawSession) setSessionId(JSON.parse(rawSession));
       } catch {
         // Corrupted storage: boot with a fresh database instead of crashing.
@@ -87,17 +98,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     else AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
   }, [sessionId, hydrated]);
 
+  // Auto-close trips whose end date passes while the app is open. The sweep
+  // returns the same reference when nothing changed, so idle ticks are free.
+  useEffect(() => {
+    if (!hydrated) return;
+    const tick = () =>
+      setDb((prev) => {
+        const swept = sweepAutoClose(prev.groups);
+        return swept.changed ? { ...prev, groups: swept.groups } : prev;
+      });
+    const iv = setInterval(tick, 60000);
+    return () => clearInterval(iv);
+  }, [hydrated]);
+
   const user = useMemo(
     () => db.users.find((u) => u.id === sessionId) ?? null,
     [db.users, sessionId]
   );
 
+  // Open trips first (newest first), closed/ended trips sink to the bottom.
   const myGroups = useMemo(
     () =>
       user
         ? db.groups
             .filter((g) => g.members.some((m) => m.id === user.id))
-            .sort((a, b) => b.createdAt - a.createdAt)
+            .sort((a, b) => {
+              const closedDiff = Number(isTripClosed(a)) - Number(isTripClosed(b));
+              return closedDiff !== 0 ? closedDiff : b.createdAt - a.createdAt;
+            })
         : [],
     [db.groups, user]
   );
@@ -142,13 +170,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => setSessionId(null), []);
 
   const createGroup = useCallback<AppContextValue['createGroup']>(
-    ({ name, destination, days, budget }) => {
+    ({ name, destination, startDate, endDate, budget }) => {
       if (!user) return { ok: false, error: 'You need to be logged in.' };
       const group: Group = {
         id: uid('grp'),
         name: name.trim(),
         destination: destination.trim(),
-        days,
+        startDate,
+        endDate,
+        days: daysBetweenInclusive(startDate, endDate),
         budget,
         currency: 'IDR',
         code: generateInviteCode(db.groups.map((g) => g.code)),
@@ -157,6 +187,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createdBy: user.id,
         members: [{ id: user.id, name: user.name }],
         expenses: [],
+        closedAt: null,
+        closedReason: null,
       };
       setDb((prev) => ({ ...prev, groups: [group, ...prev.groups] }));
       return { ok: true, value: group };
@@ -202,7 +234,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDb((prev) => ({
       ...prev,
       groups: prev.groups.map((g) =>
-        g.id === groupId ? { ...g, expenses: [expense, ...g.expenses] } : g
+        // Ignore writes to a closed trip — its ledger is locked.
+        g.id === groupId && !isTripClosed(g) ? { ...g, expenses: [expense, ...g.expenses] } : g
       ),
     }));
   }, []);
@@ -212,6 +245,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...prev,
       groups: prev.groups.map((g) =>
         g.id === groupId ? { ...g, expenses: g.expenses.filter((e) => e.id !== expenseId) } : g
+      ),
+    }));
+  }, []);
+
+  const closeTrip = useCallback<AppContextValue['closeTrip']>((groupId) => {
+    setDb((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) =>
+        g.id === groupId && g.closedAt == null
+          ? { ...g, closedAt: Date.now(), closedReason: 'manual' }
+          : g
+      ),
+    }));
+  }, []);
+
+  const reopenTrip = useCallback<AppContextValue['reopenTrip']>((groupId) => {
+    setDb((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) =>
+        // A trip whose dates already passed stays closed — reopening it wouldn't
+        // change that it's over. Only manual closes can be undone.
+        g.id === groupId && tripPhase(g) !== 'ended'
+          ? { ...g, closedAt: null, closedReason: null }
+          : g
       ),
     }));
   }, []);
@@ -232,6 +289,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     joinGroup,
     addExpense,
     deleteExpense,
+    closeTrip,
+    reopenTrip,
     getGroup,
   };
 

@@ -9,11 +9,11 @@ import { firstName, formatIDR } from '@/utils/format';
 import { groupStats } from '@/utils/stats';
 
 export const SUGGESTIONS = [
-  'How much is left?',
-  'Split per person',
-  'Biggest category?',
-  'Are we on pace?',
-  'Food ideas within budget?',
+  'Sisa budget berapa?',
+  'Bagi rata per orang',
+  'Kategori paling boros?',
+  'Masih on track gak?',
+  'Ide makanan sesuai budget?',
 ];
 
 function hasAny(q: string, words: string[]): boolean {
@@ -22,11 +22,11 @@ function hasAny(q: string, words: string[]): boolean {
 
 export function greetingMessage(group: Group, user: User | null): string {
   const stats = groupStats(group);
-  const name = firstName(user?.name ?? 'there');
+  const name = firstName(user?.name ?? 'kamu');
   if (stats.count === 0) {
-    return `Hi ${name}! I'm watching ${group.name} — ${formatIDR(group.budget)} budgeted over ${group.days} days, nothing spent yet. Log an expense, then ask me what's left, who's paid what, or whether you're on pace.`;
+    return `Hai ${name}! Aku pantau ${group.name} — budget ${formatIDR(group.budget)} buat ${group.days} hari, belum ada yang kecatat. Catat dulu pengeluarannya, terus tanya aku sisa budget, siapa yang udah bayar, atau masih on track gak.`;
   }
-  return `Hi ${name}! ${group.name} so far: ${formatIDR(stats.spent)} spent of ${formatIDR(group.budget)}. Ask me what's left, the split per person, or whether you're on pace.`;
+  return `Hai ${name}! ${group.name} sejauh ini: udah keluar ${formatIDR(stats.spent)} dari budget ${formatIDR(group.budget)}. Tanya aja sisa budget, bagi rata per orang, atau apakah masih on track.`;
 }
 
 export function answerQuestion(rawQuestion: string, group: Group, user: User | null): string {
@@ -36,74 +36,74 @@ export function answerQuestion(rawQuestion: string, group: Group, user: User | n
   const noData = stats.count === 0;
 
   // Recent activity
-  if (hasAny(q, ['recent', 'latest', 'history', 'last expense', 'log'])) {
-    if (noData) return `Nothing logged yet for ${group.name}. Tap + on the trip screen to add the first expense.`;
+  if (hasAny(q, ['recent', 'latest', 'history', 'last expense', 'log', 'terbaru', 'terakhir', 'riwayat', 'catatan'])) {
+    if (noData) return `Belum ada yang kecatat buat ${group.name}. Tap + di halaman trip buat nambahin pengeluaran pertama.`;
     const latest = [...group.expenses].sort((a, b) => b.createdAt - a.createdAt).slice(0, 3);
     const lines = latest.map((e) => {
       const payer = members.find((m) => m.id === e.paidById);
-      return `• ${e.title} — ${formatIDR(e.amount)} (${categoryById(e.categoryId).label}, paid by ${payer ? firstName(payer.name) : 'someone'})`;
+      return `• ${e.title} — ${formatIDR(e.amount)} (${categoryById(e.categoryId).label}, dibayar ${payer ? firstName(payer.name) : 'seseorang'})`;
     });
-    return `Latest expenses:\n${lines.join('\n')}`;
+    return `Pengeluaran terbaru:\n${lines.join('\n')}`;
   }
 
   // Who paid what / settle up
-  if (hasAny(q, ['owe', 'split', 'settle', 'balance', 'who paid', 'per person', 'each'])) {
+  if (hasAny(q, ['owe', 'split', 'settle', 'balance', 'who paid', 'per person', 'each', 'utang', 'bagi', 'lunas', 'saldo', 'siapa bayar', 'per orang', 'masing'])) {
     if (noData)
-      return 'No expenses yet, so there is nothing to split. Once people start paying, I can tell you who is ahead and who needs to top up.';
+      return 'Belum ada pengeluaran, jadi belum ada yang perlu dibagi. Begitu mulai ada yang bayar, aku bisa kasih tau siapa yang udah lebih dan siapa yang masih perlu nombokin.';
     const lines = stats.byMember.map((b) => {
-      const who = b.member.name === user?.name ? 'You' : firstName(b.member.name);
-      if (Math.abs(b.diff) < 1000) return `• ${who} paid ${formatIDR(b.paid)} — even`;
+      const who = b.member.name === user?.name ? 'Kamu' : firstName(b.member.name);
+      if (Math.abs(b.diff) < 1000) return `• ${who} udah bayar ${formatIDR(b.paid)} — pas`;
       return b.diff > 0
-        ? `• ${who} paid ${formatIDR(b.paid)} — is owed ${formatIDR(b.diff)}`
-        : `• ${who} paid ${formatIDR(b.paid)} — owes ${formatIDR(-b.diff)}`;
+        ? `• ${who} udah bayar ${formatIDR(b.paid)} — masih ada tagihan ${formatIDR(b.diff)}`
+        : `• ${who} udah bayar ${formatIDR(b.paid)} — masih nombok ${formatIDR(-b.diff)}`;
     });
-    return `Total spent is ${formatIDR(stats.spent)}, which works out to ${formatIDR(stats.perPersonShare)} per person across ${members.length} ${members.length === 1 ? 'member' : 'members'}.\n${lines.join('\n')}`;
+    return `Total pengeluaran ${formatIDR(stats.spent)}, kalau dibagi rata jadi ${formatIDR(stats.perPersonShare)} per orang buat ${members.length} ${members.length === 1 ? 'anggota' : 'anggota'}.\n${lines.join('\n')}`;
   }
 
   // Pace vs. daily target
-  if (hasAny(q, ['pace', 'track', 'daily', 'per day', 'a day', 'forecast', 'projection'])) {
+  if (hasAny(q, ['pace', 'track', 'daily', 'per day', 'a day', 'forecast', 'projection', 'sesuai target', 'harian', 'sehari', 'proyeksi', 'perkiraan'])) {
     if (noData)
-      return `Your target is ${formatIDR(stats.dailyTarget)} per day (${formatIDR(group.budget)} over ${group.days} days). Nothing is logged yet, so the whole budget is still yours.`;
+      return `Target harian kamu ${formatIDR(stats.dailyTarget)} (budget ${formatIDR(group.budget)} buat ${group.days} hari). Belum ada yang kecatat, jadi budgetnya masih utuh.`;
     const verdict =
       stats.projected <= group.budget
-        ? `keep this up and you'll land around ${formatIDR(stats.projected)} — inside the budget.`
-        : `at this rate you'd land around ${formatIDR(stats.projected)}, about ${formatIDR(stats.projected - group.budget)} over. Worth easing off a little.`;
-    return `Daily target: ${formatIDR(stats.dailyTarget)}. You're averaging ${formatIDR(stats.dailyAverage)} across ${stats.activeDays} spending ${stats.activeDays === 1 ? 'day' : 'days'} — ${verdict}`;
+        ? `lanjutin aja gaya segini, kira-kira totalnya bakal sekitar ${formatIDR(stats.projected)} — masih aman di dalam budget.`
+        : `dengan ritme sekarang, totalnya bisa sekitar ${formatIDR(stats.projected)}, kelebihan sekitar ${formatIDR(stats.projected - group.budget)}. Mending agak direm dikit.`;
+    return `Target harian: ${formatIDR(stats.dailyTarget)}. Rata-rata kamu keluar ${formatIDR(stats.dailyAverage)} dalam ${stats.activeDays} hari pengeluaran — ${verdict}`;
   }
 
   // Category breakdown
-  if (hasAny(q, ['category', 'categories', 'biggest', 'most', 'top', 'breakdown', 'where'])) {
-    if (noData) return 'No expenses yet — once you log a few I can break spending down by category.';
+  if (hasAny(q, ['category', 'categories', 'biggest', 'most', 'top', 'breakdown', 'where', 'kategori', 'terbesar', 'paling', 'boros', 'kemana'])) {
+    if (noData) return 'Belum ada pengeluaran — begitu ada beberapa yang kecatat, aku bisa bagi berdasarkan kategori.';
     const top = stats.byCategory
       .slice(0, 3)
       .map((x) => `• ${x.category.label}: ${formatIDR(x.total)} (${Math.round(x.share * 100)}%)`);
     const biggest = stats.biggest!;
-    return `Where the money went:\n${top.join('\n')}\nBiggest single expense: ${biggest.title}, ${formatIDR(biggest.amount)}.`;
+    return `Kemana aja uangnya:\n${top.join('\n')}\nPengeluaran terbesar: ${biggest.title}, ${formatIDR(biggest.amount)}.`;
   }
 
   // Food recommendations against the remaining budget
-  if (hasAny(q, ['food', 'eat', 'restaurant', 'cuisine', 'meal', 'dinner', 'lunch', 'breakfast', 'snack'])) {
+  if (hasAny(q, ['food', 'eat', 'restaurant', 'cuisine', 'meal', 'dinner', 'lunch', 'breakfast', 'snack', 'makan', 'makanan', 'restoran', 'kuliner', 'sarapan', 'jajan'])) {
     const perPerson = stats.remaining / Math.max(1, members.length);
     if (stats.remaining <= 0) {
-      return `You're over budget by ${formatIDR(-stats.remaining)}, so lean on affordable local food in ${group.destination} — street food and warungs over sit-down restaurants until the numbers even out.`;
+      return `Kamu udah kelebihan budget ${formatIDR(-stats.remaining)}, jadi mending cari makanan lokal yang murah meriah di ${group.destination} — jajanan kaki lima atau warung dulu, restoran belakangan sampai angkanya balik aman.`;
     }
-    return `You have ${formatIDR(stats.remaining)} left (${formatIDR(perPerson)} per person). I can't look up specific spots offline, but that's enough for a solid mix of local eats in ${group.destination} — favor street food and local warungs over touristy sit-downs to stretch it further. Ask again once you're back online for named recommendations.`;
+    return `Sisa budget kamu ${formatIDR(stats.remaining)} (${formatIDR(perPerson)} per orang). Aku belum bisa cariin tempat spesifik pas offline, tapi segitu udah cukup buat makan enak di ${group.destination} — pilih jajanan kaki lima atau warung lokal biar lebih hemat daripada restoran turis. Coba tanya lagi pas online buat rekomendasi tempat yang lebih spesifik.`;
   }
 
   // Remaining budget
-  if (hasAny(q, ['left', 'remaining', 'remain', 'sisa', 'budget'])) {
+  if (hasAny(q, ['left', 'remaining', 'remain', 'sisa', 'budget', 'anggaran'])) {
     if (stats.remaining >= 0) {
-      return `${formatIDR(stats.remaining)} left of your ${formatIDR(group.budget)} budget — ${Math.round(stats.pctUsed * 100)}% used. That's about ${formatIDR(stats.remaining / Math.max(1, members.length))} per person.`;
+      return `${formatIDR(stats.remaining)} sisa dari budget ${formatIDR(group.budget)} kamu — udah kepake ${Math.round(stats.pctUsed * 100)}%. Sekitar ${formatIDR(stats.remaining / Math.max(1, members.length))} per orang.`;
     }
-    return `You're over budget by ${formatIDR(-stats.remaining)} (spent ${formatIDR(stats.spent)} of ${formatIDR(group.budget)}). Ask me for the category breakdown to find where to cut.`;
+    return `Kamu kelebihan budget ${formatIDR(-stats.remaining)} (udah keluar ${formatIDR(stats.spent)} dari ${formatIDR(group.budget)}). Coba tanya breakdown kategori buat cari tau di mana bisa dihemat.`;
   }
 
   // Total spent
-  if (hasAny(q, ['spent', 'spend', 'total', 'so far'])) {
-    if (noData) return `Nothing spent yet on ${group.name}. The full ${formatIDR(group.budget)} budget is intact.`;
-    return `${formatIDR(stats.spent)} across ${stats.count} ${stats.count === 1 ? 'expense' : 'expenses'} — ${Math.round(stats.pctUsed * 100)}% of the ${formatIDR(group.budget)} budget.`;
+  if (hasAny(q, ['spent', 'spend', 'total', 'so far', 'keluar', 'habis', 'sejauh ini'])) {
+    if (noData) return `Belum ada pengeluaran buat ${group.name}. Budget ${formatIDR(group.budget)} masih utuh.`;
+    return `${formatIDR(stats.spent)} dari ${stats.count} ${stats.count === 1 ? 'pengeluaran' : 'pengeluaran'} — ${Math.round(stats.pctUsed * 100)}% dari budget ${formatIDR(group.budget)}.`;
   }
 
   // Greeting / help / fallback
-  return `I answer from ${group.name}'s live numbers. Try:\n• "How much is left?"\n• "Split per person"\n• "What's our biggest category?"\n• "Are we on pace?"\n• "Food ideas within budget?"`;
+  return `Aku jawab berdasarkan data live ${group.name}. Coba tanya:\n• "Sisa budget berapa?"\n• "Bagi rata per orang"\n• "Kategori paling boros?"\n• "Masih on track gak?"\n• "Ide makanan sesuai budget?"`;
 }

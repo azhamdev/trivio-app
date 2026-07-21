@@ -3,10 +3,20 @@ import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { Animated, Share, StyleSheet, Text, ScrollView as RNScrollView, View } from 'react-native';
+import {
+  Animated,
+  Modal,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  ScrollView as RNScrollView,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Avatar from '@/components/Avatar';
+import Button from '@/components/Button';
 import EmptyState from '@/components/EmptyState';
 import ExpenseRow from '@/components/ExpenseRow';
 import FadeSlideIn from '@/components/FadeSlideIn';
@@ -14,8 +24,10 @@ import PressableScale from '@/components/PressableScale';
 import ProgressBar from '@/components/ProgressBar';
 import { useApp } from '@/context/AppContext';
 import { colors, radius, shadow, type, USE_NATIVE_DRIVER } from '@/theme/theme';
+import { formatDateRange, formatDateShort } from '@/utils/dates';
 import { formatIDR, formatIDRCompact } from '@/utils/format';
 import { groupExpensesByDay, groupStats } from '@/utils/stats';
+import { canReopen, closedLabel, isTripClosed, tripDayInfo } from '@/utils/trip';
 
 const COVER_HEIGHT = 280;
 const AnimatedCover = Animated.createAnimatedComponent(Image);
@@ -23,16 +35,20 @@ const AnimatedCover = Animated.createAnimatedComponent(Image);
 export default function GroupDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getGroup, user, deleteExpense } = useApp();
+  const { getGroup, user, deleteExpense, closeTrip, reopenTrip } = useApp();
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
   const [copied, setCopied] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const group = getGroup(id);
   if (!group || !user) return null;
 
   const stats = groupStats(group);
   const sections = groupExpensesByDay(group.expenses);
+  const closed = isTripClosed(group);
+  const reopenable = canReopen(group);
+  const dayInfo = tripDayInfo(group);
 
   const copyCode = async () => {
     try {
@@ -80,13 +96,28 @@ export default function GroupDetailScreen() {
         <View style={styles.sheet}>
           <FadeSlideIn>
             <View style={styles.handle} />
-            <Text style={type.display}>{group.name}</Text>
+            <View style={styles.titleRow}>
+              <Text style={[type.display, styles.title]}>{group.name}</Text>
+              {closed ? (
+                <View style={styles.statusChip}>
+                  <Ionicons name="lock-closed" size={12} color={colors.slate} />
+                  <Text style={styles.statusChipText}>{closedLabel(group)}</Text>
+                </View>
+              ) : (
+                <View style={[styles.statusChip, styles.statusChipActive]}>
+                  <View style={styles.liveDot} />
+                  <Text style={[styles.statusChipText, styles.statusChipTextActive]}>
+                    {dayInfo.label}
+                  </Text>
+                </View>
+              )}
+            </View>
             <View style={styles.metaRow}>
               <Ionicons name="location-outline" size={15} color={colors.slate} />
               <Text style={styles.metaText}>{group.destination}</Text>
               <View style={styles.metaDot} />
               <Ionicons name="calendar-outline" size={14} color={colors.slate} />
-              <Text style={styles.metaText}>{group.days} days</Text>
+              <Text style={styles.metaText}>{formatDateRange(group.startDate, group.endDate)}</Text>
             </View>
             <PressableScale onPress={copyCode} style={styles.codePill}>
               <Ionicons name="key-outline" size={15} color={colors.primaryDark} />
@@ -94,6 +125,35 @@ export default function GroupDetailScreen() {
               <Text style={styles.codeHint}>{copied ? 'Copied!' : 'Tap to copy · share to invite'}</Text>
             </PressableScale>
           </FadeSlideIn>
+
+          {closed ? (
+            <FadeSlideIn delay={40}>
+              <View style={styles.closedBanner}>
+                <View style={styles.closedIcon}>
+                  <Ionicons name="lock-closed" size={18} color={colors.slate} />
+                </View>
+                <View style={styles.closedBody}>
+                  <Text style={styles.closedTitle}>
+                    {group.closedReason === 'ended' ? 'This trip has ended' : 'This trip is closed'}
+                  </Text>
+                  <Text style={styles.closedText}>
+                    Expenses are locked to keep the final split settled.
+                    {reopenable ? ' Reopen it to add more.' : ''}
+                  </Text>
+                  {reopenable ? (
+                    <Button
+                      title="Reopen trip"
+                      icon="refresh-outline"
+                      variant="ghost"
+                      small
+                      onPress={() => reopenTrip(group.id)}
+                      style={styles.reopenBtn}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            </FadeSlideIn>
+          ) : null}
 
           <FadeSlideIn delay={80}>
             <View style={[styles.card, shadow.card]}>
@@ -173,7 +233,11 @@ export default function GroupDetailScreen() {
               <EmptyState
                 icon="receipt-outline"
                 title="No expenses yet"
-                message="Tap + to log the first one — meals, rides, tickets, anything the group pays for."
+                message={
+                  closed
+                    ? 'This trip closed without any expenses logged.'
+                    : 'Tap + to log the first one — meals, rides, tickets, anything the group pays for.'
+                }
               />
             ) : (
               sections.map((section) => (
@@ -192,6 +256,22 @@ export default function GroupDetailScreen() {
               ))
             )}
           </FadeSlideIn>
+
+          {!closed ? (
+            <FadeSlideIn delay={320}>
+              <Button
+                title="Close this trip"
+                icon="flag-outline"
+                variant="ghost"
+                onPress={() => setConfirmClose(true)}
+                style={styles.closeTripBtn}
+              />
+              <Text style={styles.closeHint}>
+                Closing locks the ledger once everyone&apos;s settled up. Trivio also closes it
+                automatically after {formatDateShort(group.endDate)}.
+              </Text>
+            </FadeSlideIn>
+          ) : null}
         </View>
       </Animated.ScrollView>
 
@@ -204,11 +284,42 @@ export default function GroupDetailScreen() {
         </PressableScale>
       </View>
 
-      <PressableScale
-        onPress={() => router.push({ pathname: '/add-expense', params: { groupId: group.id } })}
-        style={[styles.fab, shadow.fab, { bottom: insets.bottom + 24 }]}>
-        <Ionicons name="add" size={30} color="#FFFFFF" />
-      </PressableScale>
+      {!closed ? (
+        <PressableScale
+          onPress={() => router.push({ pathname: '/add-expense', params: { groupId: group.id } })}
+          style={[styles.fab, shadow.fab, { bottom: insets.bottom + 24 }]}>
+          <Ionicons name="add" size={30} color="#FFFFFF" />
+        </PressableScale>
+      ) : null}
+
+      <Modal visible={confirmClose} transparent animationType="fade" onRequestClose={() => setConfirmClose(false)}>
+        <View style={styles.dialogBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setConfirmClose(false)} />
+          <View style={styles.dialog}>
+            <View style={styles.dialogIcon}>
+              <Ionicons name="flag" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.dialogTitle}>Close {group.name}?</Text>
+            <Text style={styles.dialogBody}>
+              No new expenses can be added after closing. You can reopen it later as long as the trip
+              dates haven&apos;t passed.
+            </Text>
+            <Button
+              title="Close trip"
+              onPress={() => {
+                closeTrip(group.id);
+                setConfirmClose(false);
+              }}
+            />
+            <Button
+              title="Keep it open"
+              variant="ghost"
+              onPress={() => setConfirmClose(false)}
+              style={styles.dialogCancel}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -240,7 +351,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.line,
     marginBottom: 18,
   },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { flexShrink: 1 },
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.line,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  statusChipActive: { backgroundColor: colors.successSoft },
+  statusChipText: { fontSize: 11.5, fontWeight: '700', color: colors.slate },
+  statusChipTextActive: { color: colors.success },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
   metaText: { fontSize: 13.5, color: colors.slate, fontWeight: '500' },
   metaDot: {
     width: 3,
@@ -262,7 +388,29 @@ const styles = StyleSheet.create({
   },
   codeText: { fontSize: 14, fontWeight: '800', color: colors.primaryDark, letterSpacing: 2 },
   codeHint: { fontSize: 11.5, color: colors.primary, fontWeight: '600' },
-  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginTop: 4 },
+  closedBanner: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.lg,
+    padding: 14,
+    marginTop: 16,
+  },
+  closedIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closedBody: { flex: 1 },
+  closedTitle: { fontSize: 14.5, fontWeight: '700', color: colors.ink },
+  closedText: { ...type.caption, lineHeight: 18, marginTop: 3 },
+  reopenBtn: { alignSelf: 'flex-start', marginTop: 12 },
+  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginTop: 16 },
   budgetRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 10 },
   spentBig: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
   ofBudget: { ...type.caption, fontSize: 13.5, marginBottom: 4 },
@@ -304,6 +452,8 @@ const styles = StyleSheet.create({
   catLabel: { fontSize: 13.5, fontWeight: '600', color: colors.ink },
   catAmount: { fontSize: 13, fontWeight: '700', color: colors.slate },
   dayLabel: { ...type.overline, marginTop: 14, marginBottom: 10 },
+  closeTripBtn: { marginTop: 28 },
+  closeHint: { ...type.caption, lineHeight: 18, textAlign: 'center', marginTop: 10 },
   topBar: {
     position: 'absolute',
     left: 16,
@@ -329,4 +479,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  dialogBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11,34,57,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  dialog: {
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    padding: 22,
+    width: '100%',
+    maxWidth: 360,
+  },
+  dialogIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  dialogTitle: { ...type.title, fontSize: 19, marginBottom: 8 },
+  dialogBody: { ...type.body, color: colors.slate, marginBottom: 18 },
+  dialogCancel: { marginTop: 8 },
 });

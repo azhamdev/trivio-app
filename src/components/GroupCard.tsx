@@ -8,22 +8,33 @@ import PressableScale from '@/components/PressableScale';
 import ProgressBar from '@/components/ProgressBar';
 import { colors, radius, shadow, type } from '@/theme/theme';
 import { Group } from '@/types';
+import { formatDateRangeShort } from '@/utils/dates';
 import { formatIDRCompact } from '@/utils/format';
 import { groupStats } from '@/utils/stats';
+import { closedLabel, isTripClosed } from '@/utils/trip';
 
 type Props = { group: Group; onPress: () => void; style?: StyleProp<ViewStyle> };
 
 export default function GroupCard({ group, onPress, style }: Props) {
   const stats = groupStats(group);
   const extraMembers = group.members.length - 3;
+  const closed = isTripClosed(group);
 
   return (
     <PressableScale onPress={onPress} scaleTo={0.97} style={[styles.card, shadow.card, style]}>
-      <Image source={{ uri: group.coverUrl }} style={styles.cover} contentFit="cover" transition={250} />
+      <View style={closed ? styles.dimmed : undefined}>
+        <Image source={{ uri: group.coverUrl }} style={styles.cover} contentFit="cover" transition={250} />
+      </View>
       <View style={styles.daysChip}>
         <Ionicons name="calendar-outline" size={12} color={colors.ink} />
-        <Text style={styles.daysText}>{group.days} days</Text>
+        <Text style={styles.daysText}>{formatDateRangeShort(group.startDate, group.endDate)}</Text>
       </View>
+      {closed ? (
+        <View style={styles.closedChip}>
+          <Ionicons name="lock-closed" size={11} color="#FFFFFF" />
+          <Text style={styles.closedChipText}>{closedLabel(group)}</Text>
+        </View>
+      ) : null}
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>
           {group.name}
@@ -65,6 +76,20 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   cover: { width: '100%', height: 132, backgroundColor: colors.primarySoft },
+  dimmed: { opacity: 0.55 },
+  closedChip: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(11,34,57,0.72)',
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  closedChipText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
   daysChip: {
     position: 'absolute',
     top: 12,

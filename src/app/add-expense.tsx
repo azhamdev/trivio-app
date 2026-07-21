@@ -26,6 +26,7 @@ import { colors, type, USE_NATIVE_DRIVER } from '@/theme/theme';
 import { CategoryId } from '@/types';
 import { digitsOnly, firstName, formatAmountInput, formatIDR } from '@/utils/format';
 import { groupStats } from '@/utils/stats';
+import { isTripClosed } from '@/utils/trip';
 
 export default function AddExpenseScreen() {
   const router = useRouter();
@@ -42,6 +43,23 @@ export default function AddExpenseScreen() {
   const pulse = useRef(new Animated.Value(1)).current;
 
   if (!group || !user) return null;
+
+  // Defensive: the FAB is hidden on closed trips, but block deep links too.
+  if (isTripClosed(group)) {
+    return (
+      <View style={styles.flex}>
+        <ScreenHeader title="Add expense" subtitle={group.name} />
+        <View style={styles.closedWrap}>
+          <Ionicons name="lock-closed-outline" size={40} color={colors.faint} />
+          <Text style={styles.closedTitle}>This trip is closed</Text>
+          <Text style={styles.closedText}>
+            Its ledger is locked, so no new expenses can be added.
+          </Text>
+          <Button title="Back to trip" variant="ghost" onPress={() => router.back()} style={styles.closedBtn} />
+        </View>
+      </View>
+    );
+  }
 
   const stats = groupStats(group);
   const valid = Number(amount) > 0 && title.trim().length >= 2 && !!categoryId;
@@ -186,4 +204,8 @@ const styles = StyleSheet.create({
   memberChipText: { fontSize: 13.5, fontWeight: '600', color: colors.slate },
   memberChipTextSelected: { color: colors.primaryDark },
   save: { marginTop: 4 },
+  closedWrap: { alignItems: 'center', paddingHorizontal: 32, paddingTop: 80, gap: 8 },
+  closedTitle: { ...type.subtitle, marginTop: 12 },
+  closedText: { ...type.body, color: colors.slate, textAlign: 'center' },
+  closedBtn: { marginTop: 18, alignSelf: 'stretch' },
 });
