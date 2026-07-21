@@ -13,6 +13,7 @@ export const SUGGESTIONS = [
   'Split per person',
   'Biggest category?',
   'Are we on pace?',
+  'Food ideas within budget?',
 ];
 
 function hasAny(q: string, words: string[]): boolean {
@@ -80,6 +81,15 @@ export function answerQuestion(rawQuestion: string, group: Group, user: User | n
     return `Where the money went:\n${top.join('\n')}\nBiggest single expense: ${biggest.title}, ${formatIDR(biggest.amount)}.`;
   }
 
+  // Food recommendations against the remaining budget
+  if (hasAny(q, ['food', 'eat', 'restaurant', 'cuisine', 'meal', 'dinner', 'lunch', 'breakfast', 'snack'])) {
+    const perPerson = stats.remaining / Math.max(1, members.length);
+    if (stats.remaining <= 0) {
+      return `You're over budget by ${formatIDR(-stats.remaining)}, so lean on affordable local food in ${group.destination} — street food and warungs over sit-down restaurants until the numbers even out.`;
+    }
+    return `You have ${formatIDR(stats.remaining)} left (${formatIDR(perPerson)} per person). I can't look up specific spots offline, but that's enough for a solid mix of local eats in ${group.destination} — favor street food and local warungs over touristy sit-downs to stretch it further. Ask again once you're back online for named recommendations.`;
+  }
+
   // Remaining budget
   if (hasAny(q, ['left', 'remaining', 'remain', 'sisa', 'budget'])) {
     if (stats.remaining >= 0) {
@@ -95,5 +105,5 @@ export function answerQuestion(rawQuestion: string, group: Group, user: User | n
   }
 
   // Greeting / help / fallback
-  return `I answer from ${group.name}'s live numbers. Try:\n• "How much is left?"\n• "Split per person"\n• "What's our biggest category?"\n• "Are we on pace?"`;
+  return `I answer from ${group.name}'s live numbers. Try:\n• "How much is left?"\n• "Split per person"\n• "What's our biggest category?"\n• "Are we on pace?"\n• "Food ideas within budget?"`;
 }

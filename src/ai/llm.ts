@@ -13,7 +13,7 @@ import { formatIDR } from '@/utils/format';
 import { groupStats } from '@/utils/stats';
 
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
+const MODEL = 'google/gemini-3-flash-preview';
 const TIMEOUT_MS = 45000; // free-tier models can be slow
 const API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
 
@@ -24,7 +24,8 @@ Answer the traveler's question using ONLY the trip data below — never invent e
 Style: warm, concise, practical. A couple of sentences, or short bullet lines for lists. No markdown headings or tables.
 Money is Indonesian rupiah; format it like Rp 1.250.000 (dots as thousand separators).
 "The person asking" in the member list is the user you're talking to — address them as "you".
-If asked something unrelated to this trip or its spending, briefly say you only handle this trip's numbers.`;
+If asked for food or restaurant recommendations for the trip, ground the suggestion in the remaining budget and per-person share from the trip data (e.g. what price tier that supports), then use your general travel knowledge of the destination to suggest cuisine types, dish names, or venues — that general knowledge is fine here, just never invent trip expenses or numbers.
+If asked something else unrelated to this trip, its spending, or its destination, briefly say you only handle this trip's numbers.`;
 
 function buildTripContext(group: Group, user: User | null): string {
   const stats = groupStats(group);
@@ -93,7 +94,7 @@ export async function askAssistant(
       body: JSON.stringify({
         model: MODEL,
         temperature: 0.4,
-        // Nemotron is a reasoning model: thinking tokens count against
+        // Gemini 3 Flash is a reasoning model: thinking tokens count against
         // max_tokens, so keep the budget generous and the effort low.
         max_tokens: 2000,
         reasoning: { effort: 'low' },
