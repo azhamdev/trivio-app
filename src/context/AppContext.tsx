@@ -45,6 +45,14 @@ import { canReopen, isTripClosed, tripPhase } from '@/utils/trip';
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
+// Sign-up has three outcomes, not two: the account can be created and logged in
+// immediately (confirmation disabled), or created but pending email
+// confirmation (the common case), or it can fail validation.
+type RegisterResult =
+  | { ok: true; needsConfirmation: false; value: User }
+  | { ok: true; needsConfirmation: true; email: string }
+  | { ok: false; error: string };
+
 type NewExpense = {
   title: string;
   amount: number;
@@ -76,8 +84,18 @@ type AppContextValue = {
     name: string;
     email: string;
     password: string;
-  }) => Promise<Result<User>>;
-  login: (input: { email: string; password: string }) => Promise<Result<User>>;
+  }) => Promise<RegisterResult>;
+  // Confirm a pending sign-up with the 6-digit code from the email. On success
+  // a session is created (onAuthStateChange → auth guard swaps to the app).
+  verifyConfirmation: (email: string, code: string) => Promise<Result<User>>;
+  resendConfirmation: (email: string) => Promise<Result<undefined>>;
+  login: (input: {
+    email: string;
+    password: string;
+    // The `false` branch carries `needsConfirmation` so the screen can redirect
+    // an unconfirmed account to the "check your inbox" flow instead of showing a
+    // misleading "wrong password" error.
+  }) => Promise<{ ok: true; value: User } | { ok: false; error: string; needsConfirmation?: boolean }>;
   logout: () => Promise<void>;
   createGroup: (input: {
     name: string;
@@ -117,6 +135,27 @@ function userFromSession(su: Session['user']): User {
     email: su.email ?? '',
     createdAt: su.created_at ? new Date(su.created_at).getTime() : Date.now(),
   };
+}
+
+// supabase-js auth errors are not user-facing: `.message` can be a raw server
+// string, or — for a 500 with no JSON body — serialized response metadata like
+// `{"status":500,…}`. Map to a short human message; the real detail is logged.
+function friendlySignUpError(error: { message?: string; status?: number; code?: string }): string {
+  const msg = error.message ?? '';
+  if (/already registered|already exists|already been registered/i.test(msg))
+    return 'An account with this email already exists. Try logging in.';
+  // 500s here are almost always "Error sending confirmation email" — the
+  // project's email isn't sending (SMTP unconfigured, rate-limited, or a broken
+  // email template). Nothing the user typed is wrong, so don't blame them.
+  if (
+    (error.status ?? 0) >= 500 ||
+    error.code === 'unexpected_failure' ||
+    /sending.*email|confirmation email/i.test(msg)
+  )
+    return "We couldn't send your confirmation email. Please try again in a few minutes.";
+  // Server-side password/validation messages are already readable — pass through.
+  if (/password/i.test(msg)) return msg;
+  return 'Could not create your account. Please try again.';
 }
 
 // Open trips/budgets first (newest first), closed/ended ones sink to the bottom.
@@ -231,25 +270,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: 'Enter a valid email address.' };
     if (password.length < 6)
       return { ok: false, error: 'Password needs at least 6 characters.' };
-    const { data, error } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password,
-      options: { data: { name: cleanName } },
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: { data: { name: cleanName } },
+      });
+      if (error) {
+        console.warn('[Trivio] signUp error', error.status, error.code, error.message);
+        return { ok: false, error: friendlySignUpError(error) };
+      }
+      if (!data.session) {
+        // Email confirmation is enabled on the project — no session yet. Route
+        // the user to the "check your inbox" screen where they enter the 6-digit
+        // code from the email (verifyConfirmation below). (Turn confirmation off
+        // under Auth → Providers → Email for instant login.)
+        return { ok: true, needsConfirmation: true, email: cleanEmail };
+      }
+      // onAuthStateChange (SIGNED_IN) sets `user` and loads data; return the
+      // value for callers that read it, though the auth guard drives navigation.
+      return { ok: true, needsConfirmation: false, value: userFromSession(data.session.user) };
+    } catch (e) {
+      // A rejected promise (not a returned error) means the request never got a
+      // usable response — network down, or a 500 the SDK couldn't parse.
+      console.warn('[Trivio] signUp threw', (e as { message?: string })?.message ?? e);
+      return { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
+    }
+  }, []);
+
+  const verifyConfirmation = useCallback<AppContextValue['verifyConfirmation']>(
+    async (email, code) => {
+      const cleanCode = code.replace(/\D/g, '');
+      if (cleanCode.length < 6) return { ok: false, error: 'Enter the 6-digit code.' };
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: cleanCode,
+        type: 'signup',
+      });
+      if (error || !data.session) {
+        const friendly = /expired/i.test(error?.message ?? '')
+          ? 'That code has expired. Tap resend for a new one.'
+          : "That code isn't right. Check the email and try again.";
+        return { ok: false, error: friendly };
+      }
+      // onAuthStateChange (SIGNED_IN) sets `user`; the auth guard swaps to home.
+      return { ok: true, value: userFromSession(data.session.user) };
+    },
+    []
+  );
+
+  const resendConfirmation = useCallback<AppContextValue['resendConfirmation']>(async (email) => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
     });
     if (error) {
-      const friendly = /already registered|already exists|already been registered/i.test(error.message)
-        ? 'An account with this email already exists. Try logging in.'
+      const friendly = /rate|too many|seconds/i.test(error.message)
+        ? 'Please wait a moment before requesting another email.'
         : error.message;
       return { ok: false, error: friendly };
     }
-    if (!data.session) {
-      // Email confirmation is enabled on the project — no session yet. (Turn it
-      // off under Auth → Providers → Email for the instant-login flow.)
-      return { ok: false, error: 'Check your email to confirm your account, then log in.' };
-    }
-    // onAuthStateChange (SIGNED_IN) sets `user` and loads data; return the value
-    // for callers that read it, though navigation is driven by the auth guard.
-    return { ok: true, value: userFromSession(data.session.user) };
+    return { ok: true, value: undefined };
   }, []);
 
   const login = useCallback<AppContextValue['login']>(async ({ email, password }) => {
@@ -258,8 +339,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       email: cleanEmail,
       password,
     });
-    if (error || !data.session)
+    if (error || !data.session) {
+      // Supabase reports an unconfirmed account distinctly (code
+      // `email_not_confirmed`) — surface that so the caller can guide the user
+      // to confirm rather than blaming their password.
+      const code = (error as { code?: string } | null)?.code;
+      if (code === 'email_not_confirmed' || /not confirmed/i.test(error?.message ?? '')) {
+        return {
+          ok: false,
+          error: 'Confirm your email first — check your inbox for the link.',
+          needsConfirmation: true,
+        };
+      }
       return { ok: false, error: "Email or password doesn't match. Try again." };
+    }
     return { ok: true, value: userFromSession(data.session.user) };
   }, []);
 
@@ -535,6 +628,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user,
     myGroups,
     register,
+    verifyConfirmation,
+    resendConfirmation,
     login,
     logout,
     createGroup,

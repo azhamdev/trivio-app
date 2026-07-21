@@ -26,10 +26,24 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const [submitting, setSubmitting] = useState(false);
+
   const submit = async () => {
+    if (submitting) return;
     setError(null);
+    setSubmitting(true);
     const res = await register({ name, email, password });
-    if (!res.ok) setError(res.error);
+    setSubmitting(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    // Confirmation required: send them to the "check your inbox" screen. Tapping
+    // the email link deep-links back in and the auth guard swaps to home.
+    // Otherwise a session already exists and the guard handles navigation.
+    if (res.needsConfirmation) {
+      router.replace({ pathname: '/confirm-email', params: { email: res.email } });
+    }
   };
 
   return (
@@ -78,7 +92,12 @@ export default function RegisterScreen() {
             onSubmitEditing={submit}
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button title="Create account" onPress={submit} style={styles.submit} />
+          <Button
+            title="Create account"
+            onPress={submit}
+            loading={submitting}
+            style={styles.submit}
+          />
         </FadeSlideIn>
 
         <FadeSlideIn delay={180}>

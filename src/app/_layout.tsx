@@ -66,6 +66,7 @@ function RootStack() {
       <Stack.Protected guard={!user}>
         <Stack.Screen name="login" />
         <Stack.Screen name="register" />
+        <Stack.Screen name="confirm-email" options={{ animation: 'slide_from_right' }} />
       </Stack.Protected>
     </Stack>
   );
