@@ -66,6 +66,27 @@ export function formatDateRange(start: number, end: number): string {
   return `${formatDateShort(start)} – ${formatDateShort(end)}`;
 }
 
+// Monday-start week bounds — used for personal-budget "this week" presets.
+export function startOfWeek(ts: number = Date.now()): number {
+  const day = new Date(startOfDay(ts)).getDay(); // 0 = Sunday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  return addDays(startOfDay(ts), diffToMonday);
+}
+
+export function endOfWeek(ts: number = Date.now()): number {
+  return addDays(startOfWeek(ts), 6);
+}
+
+export function startOfMonth(ts: number = Date.now()): number {
+  const d = new Date(ts);
+  return startOfDay(new Date(d.getFullYear(), d.getMonth(), 1).getTime());
+}
+
+export function endOfMonth(ts: number = Date.now()): number {
+  const d = new Date(ts);
+  return startOfDay(new Date(d.getFullYear(), d.getMonth() + 1, 0).getTime());
+}
+
 export function monthTitle(year: number, month: number): string {
   return `${MONTHS_LONG[month]} ${year}`;
 }

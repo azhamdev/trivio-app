@@ -40,7 +40,11 @@ export default function Input({ label, error, secure, left, containerStyle, styl
           {...rest}
         />
         {secure ? (
-          <Pressable onPress={() => setHidden((h) => !h)} hitSlop={8}>
+          <Pressable
+            onPress={() => setHidden((h) => !h)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={hidden ? 'Show password' : 'Hide password'}>
             <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={20} color={colors.faint} />
           </Pressable>
         ) : null}

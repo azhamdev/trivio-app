@@ -23,9 +23,9 @@ export default function JoinGroupScreen() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
-    const res = joinGroup(code);
+    const res = await joinGroup(code);
     if (!res.ok) return setError(res.error);
     router.replace({ pathname: '/group/[id]', params: { id: res.value.id } });
   };

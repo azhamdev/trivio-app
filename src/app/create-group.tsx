@@ -44,14 +44,14 @@ export default function CreateGroupScreen() {
 
   const dayCount = startDate != null && endDate != null ? daysBetweenInclusive(startDate, endDate) : 0;
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
     const b = Number(budget);
     if (name.trim().length < 2) return setError('Give the trip a name — e.g. "Bali Getaway".');
     if (destination.trim().length < 2) return setError('Where are you going? Add a destination.');
     if (startDate == null || endDate == null) return setError('Pick your trip start and end dates.');
     if (!b) return setError('Set a group budget so Trivio can track your pace.');
-    const res = createGroup({ name, destination, startDate, endDate, budget: b });
+    const res = await createGroup({ name, destination, startDate, endDate, budget: b });
     if (!res.ok) return setError(res.error);
     setCreated(res.value);
     Animated.spring(pop, {

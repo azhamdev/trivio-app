@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -23,23 +23,33 @@ import FadeSlideIn from '@/components/FadeSlideIn';
 import PressableScale from '@/components/PressableScale';
 import ProgressBar from '@/components/ProgressBar';
 import { useApp } from '@/context/AppContext';
-import { colors, radius, shadow, type, USE_NATIVE_DRIVER } from '@/theme/theme';
+import { categoryById } from '@/data/categories';
+import { radius, shadow, type, USE_NATIVE_DRIVER } from '@/theme/theme';
+import { ThemeColors, useThemeColors } from '@/theme/ThemeContext';
+import { Expense } from '@/types';
 import { formatDateRange, formatDateShort } from '@/utils/dates';
-import { formatIDR, formatIDRCompact } from '@/utils/format';
+import { firstName, formatIDR, formatIDRCompact } from '@/utils/format';
 import { groupExpensesByDay, groupStats } from '@/utils/stats';
 import { canReopen, closedLabel, isTripClosed, tripDayInfo } from '@/utils/trip';
 
 const COVER_HEIGHT = 280;
 const AnimatedCover = Animated.createAnimatedComponent(Image);
+// The top-bar buttons sit on an always-white glass pill over the cover photo,
+// so their icon color stays fixed regardless of the active app theme.
+const GLASS_ICON_COLOR = '#0B2239';
 
 export default function GroupDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getGroup, user, deleteExpense, closeTrip, reopenTrip } = useApp();
+  const { getGroup, user, deleteExpense, canManageExpenses, closeTrip, reopenTrip } = useApp();
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
   const [copied, setCopied] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [manageTarget, setManageTarget] = useState<Expense | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const group = getGroup(id);
   if (!group || !user) return null;
@@ -49,6 +59,25 @@ export default function GroupDetailScreen() {
   const closed = isTripClosed(group);
   const reopenable = canReopen(group);
   const dayInfo = tripDayInfo(group);
+  const canManage = canManageExpenses(group);
+  const isCreator = group.createdBy === user.id;
+  const creatorName = group.members.find((m) => m.id === group.createdBy)?.name;
+
+  const closeManage = () => {
+    setManageTarget(null);
+    setConfirmingDelete(false);
+  };
+  const startEdit = () => {
+    if (!manageTarget) return;
+    const expenseId = manageTarget.id;
+    closeManage();
+    router.push({ pathname: '/add-expense', params: { groupId: group.id, expenseId } });
+  };
+  const doDelete = () => {
+    if (!manageTarget) return;
+    deleteExpense(group.id, manageTarget.id);
+    closeManage();
+  };
 
   const copyCode = async () => {
     try {
@@ -97,7 +126,7 @@ export default function GroupDetailScreen() {
           <FadeSlideIn>
             <View style={styles.handle} />
             <View style={styles.titleRow}>
-              <Text style={[type.display, styles.title]}>{group.name}</Text>
+              <Text style={[type.display, styles.title, { color: colors.ink }]}>{group.name}</Text>
               {closed ? (
                 <View style={styles.statusChip}>
                   <Ionicons name="lock-closed" size={12} color={colors.slate} />
@@ -119,7 +148,11 @@ export default function GroupDetailScreen() {
               <Ionicons name="calendar-outline" size={14} color={colors.slate} />
               <Text style={styles.metaText}>{formatDateRange(group.startDate, group.endDate)}</Text>
             </View>
-            <PressableScale onPress={copyCode} style={styles.codePill}>
+            <PressableScale
+              onPress={copyCode}
+              accessibilityRole="button"
+              accessibilityLabel={copied ? 'Invite code copied' : `Copy invite code ${group.code}`}
+              style={styles.codePill}>
               <Ionicons name="key-outline" size={15} color={colors.primaryDark} />
               <Text style={styles.codeText}>{group.code}</Text>
               <Text style={styles.codeHint}>{copied ? 'Copied!' : 'Tap to copy · share to invite'}</Text>
@@ -157,7 +190,7 @@ export default function GroupDetailScreen() {
 
           <FadeSlideIn delay={80}>
             <View style={[styles.card, shadow.card]}>
-              <Text style={type.overline}>Budget</Text>
+              <Text style={[type.overline, { color: colors.slate }]}>Budget</Text>
               <View style={styles.budgetRow}>
                 <Text style={styles.spentBig}>{formatIDR(stats.spent)}</Text>
                 <Text style={styles.ofBudget}>of {formatIDR(group.budget)}</Text>
@@ -169,7 +202,7 @@ export default function GroupDetailScreen() {
                 ) : (
                   <Text style={styles.remainOver}>Over by {formatIDR(-stats.remaining)}</Text>
                 )}
-                <Text style={type.caption}>
+                <Text style={[type.caption, { color: colors.faint }]}>
                   ≈ {formatIDRCompact(stats.perPersonBudget)} /person budget
                 </Text>
               </View>
@@ -188,10 +221,16 @@ export default function GroupDetailScreen() {
                   <Text style={styles.memberName} numberOfLines={1}>
                     {member.id === user.id ? 'You' : member.name.split(' ')[0]}
                   </Text>
-                  <Text style={type.caption}>{paid > 0 ? formatIDRCompact(paid) : '—'}</Text>
+                  <Text style={[type.caption, { color: colors.faint }]}>
+                    {paid > 0 ? formatIDRCompact(paid) : '—'}
+                  </Text>
                 </View>
               ))}
-              <PressableScale onPress={shareCode} style={styles.memberChip}>
+              <PressableScale
+                onPress={shareCode}
+                accessibilityRole="button"
+                accessibilityLabel="Invite a member"
+                style={styles.memberChip}>
                 <View style={styles.inviteCircle}>
                   <Ionicons name="add" size={20} color={colors.primary} />
                 </View>
@@ -240,20 +279,39 @@ export default function GroupDetailScreen() {
                 }
               />
             ) : (
-              sections.map((section) => (
-                <View key={section.key}>
-                  <Text style={styles.dayLabel}>{section.label}</Text>
-                  {section.items.map((exp) => (
-                    <ExpenseRow
-                      key={exp.id}
-                      expense={exp}
-                      group={group}
-                      currentUserId={user.id}
-                      onDelete={() => deleteExpense(group.id, exp.id)}
-                    />
-                  ))}
-                </View>
-              ))
+              <>
+                {canManage ? (
+                  <Text style={styles.manageHint}>
+                    Spotted a typo? Tap any expense to edit or delete it.
+                  </Text>
+                ) : !isCreator ? (
+                  <Text style={styles.manageHint}>
+                    Only {creatorName ? firstName(creatorName) : 'the trip creator'} can edit or
+                    delete entries.
+                  </Text>
+                ) : null}
+                {sections.map((section) => (
+                  <View key={section.key}>
+                    <Text style={styles.dayLabel}>{section.label}</Text>
+                    {section.items.map((exp) => {
+                      const payer = group.members.find((m) => m.id === exp.paidById);
+                      const payerLabel = payer
+                        ? payer.id === user.id
+                          ? 'you'
+                          : firstName(payer.name)
+                        : 'someone';
+                      return (
+                        <ExpenseRow
+                          key={exp.id}
+                          expense={exp}
+                          payerLabel={payerLabel}
+                          onManage={canManage ? () => setManageTarget(exp) : undefined}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
+              </>
             )}
           </FadeSlideIn>
 
@@ -276,17 +334,27 @@ export default function GroupDetailScreen() {
       </Animated.ScrollView>
 
       <View style={[styles.topBar, { top: insets.top + 8 }]}>
-        <PressableScale onPress={() => router.back()} style={styles.roundBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.ink} />
+        <PressableScale
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.roundBtn}>
+          <Ionicons name="chevron-back" size={22} color={GLASS_ICON_COLOR} />
         </PressableScale>
-        <PressableScale onPress={shareCode} style={styles.roundBtn}>
-          <Ionicons name="share-outline" size={20} color={colors.ink} />
+        <PressableScale
+          onPress={shareCode}
+          accessibilityRole="button"
+          accessibilityLabel="Share invite code"
+          style={styles.roundBtn}>
+          <Ionicons name="share-outline" size={20} color={GLASS_ICON_COLOR} />
         </PressableScale>
       </View>
 
       {!closed ? (
         <PressableScale
           onPress={() => router.push({ pathname: '/add-expense', params: { groupId: group.id } })}
+          accessibilityRole="button"
+          accessibilityLabel="Add expense"
           style={[styles.fab, shadow.fab, { bottom: insets.bottom + 24 }]}>
           <Ionicons name="add" size={30} color="#FFFFFF" />
         </PressableScale>
@@ -320,189 +388,296 @@ export default function GroupDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={!!manageTarget}
+        transparent
+        animationType="slide"
+        onRequestClose={closeManage}>
+        <View style={styles.sheetBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeManage} />
+          <View style={[styles.actionSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.grabber} />
+            {manageTarget ? (
+              <>
+                <Text style={styles.sheetTitle} numberOfLines={1}>
+                  {manageTarget.title}
+                </Text>
+                <Text style={styles.sheetSub}>
+                  {formatIDR(manageTarget.amount)} · {categoryById(manageTarget.categoryId).label}
+                </Text>
+
+                {confirmingDelete ? (
+                  <>
+                    <Text style={styles.confirmText}>
+                      Delete this expense? This can&apos;t be undone.
+                    </Text>
+                    <Button title="Delete expense" variant="danger" icon="trash-outline" onPress={doDelete} />
+                    <Button
+                      title="Cancel"
+                      variant="ghost"
+                      onPress={() => setConfirmingDelete(false)}
+                      style={styles.dialogCancel}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <PressableScale
+                      onPress={startEdit}
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit expense"
+                      style={styles.actionRow}>
+                      <View style={styles.actionIcon}>
+                        <Ionicons name="create-outline" size={20} color={colors.primary} />
+                      </View>
+                      <Text style={styles.actionLabel}>Edit expense</Text>
+                      <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+                    </PressableScale>
+                    <PressableScale
+                      onPress={() => setConfirmingDelete(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Delete expense"
+                      style={styles.actionRow}>
+                      <View style={[styles.actionIcon, styles.actionIconDanger]}>
+                        <Ionicons name="trash-outline" size={19} color={colors.danger} />
+                      </View>
+                      <Text style={[styles.actionLabel, styles.actionLabelDanger]}>Delete expense</Text>
+                      <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+                    </PressableScale>
+                  </>
+                )}
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.bg },
-  cover: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: COVER_HEIGHT,
-    backgroundColor: colors.primarySoft,
-  },
-  coverSpacer: { height: COVER_HEIGHT - 60 },
-  sheet: {
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    minHeight: 620,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.line,
-    marginBottom: 18,
-  },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  title: { flexShrink: 1 },
-  statusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.line,
-    borderRadius: radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  statusChipActive: { backgroundColor: colors.successSoft },
-  statusChipText: { fontSize: 11.5, fontWeight: '700', color: colors.slate },
-  statusChipTextActive: { color: colors.success },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
-  metaText: { fontSize: 13.5, color: colors.slate, fontWeight: '500' },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.faint,
-    marginHorizontal: 4,
-  },
-  codePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginTop: 14,
-  },
-  codeText: { fontSize: 14, fontWeight: '800', color: colors.primaryDark, letterSpacing: 2 },
-  codeHint: { fontSize: 11.5, color: colors.primary, fontWeight: '600' },
-  closedBanner: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.lg,
-    padding: 14,
-    marginTop: 16,
-  },
-  closedIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closedBody: { flex: 1 },
-  closedTitle: { fontSize: 14.5, fontWeight: '700', color: colors.ink },
-  closedText: { ...type.caption, lineHeight: 18, marginTop: 3 },
-  reopenBtn: { alignSelf: 'flex-start', marginTop: 12 },
-  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginTop: 16 },
-  budgetRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 10 },
-  spentBig: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
-  ofBudget: { ...type.caption, fontSize: 13.5, marginBottom: 4 },
-  budgetBar: { marginTop: 14 },
-  budgetFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  remainOk: { fontSize: 13.5, fontWeight: '700', color: colors.success },
-  remainOver: { fontSize: 13.5, fontWeight: '700', color: colors.danger },
-  sectionTitle: { ...type.subtitle, marginTop: 26, marginBottom: 12 },
-  membersRow: { gap: 16, paddingRight: 8 },
-  memberChip: { alignItems: 'center', gap: 4, width: 60 },
-  memberName: { fontSize: 12.5, fontWeight: '600', color: colors.ink, marginTop: 2 },
-  inviteCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inviteLabel: { fontSize: 12.5, fontWeight: '600', color: colors.primary, marginTop: 2 },
-  catRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
-  catRowBorder: { borderTopWidth: 1, borderTopColor: colors.line },
-  catIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catBody: { flex: 1, gap: 7 },
-  catTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  catLabel: { fontSize: 13.5, fontWeight: '600', color: colors.ink },
-  catAmount: { fontSize: 13, fontWeight: '700', color: colors.slate },
-  dayLabel: { ...type.overline, marginTop: 14, marginBottom: 10 },
-  closeTripBtn: { marginTop: 28 },
-  closeHint: { ...type.caption, lineHeight: 18, textAlign: 'center', marginTop: 10 },
-  topBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  roundBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dialogBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(11,34,57,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-  },
-  dialog: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: 22,
-    width: '100%',
-    maxWidth: 360,
-  },
-  dialogIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  dialogTitle: { ...type.title, fontSize: 19, marginBottom: 8 },
-  dialogBody: { ...type.body, color: colors.slate, marginBottom: 18 },
-  dialogCancel: { marginTop: 8 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: colors.bg },
+    cover: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: COVER_HEIGHT,
+      backgroundColor: colors.primarySoft,
+    },
+    coverSpacer: { height: COVER_HEIGHT - 60 },
+    sheet: {
+      backgroundColor: colors.bg,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      minHeight: 620,
+    },
+    handle: {
+      alignSelf: 'center',
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.line,
+      marginBottom: 18,
+    },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    title: { flexShrink: 1 },
+    statusChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: colors.line,
+      borderRadius: radius.full,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    statusChipActive: { backgroundColor: colors.successSoft },
+    statusChipText: { fontSize: 11.5, fontWeight: '700', color: colors.slate },
+    statusChipTextActive: { color: colors.success },
+    liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
+    metaText: { fontSize: 13.5, color: colors.slate, fontWeight: '500' },
+    metaDot: {
+      width: 3,
+      height: 3,
+      borderRadius: 2,
+      backgroundColor: colors.faint,
+      marginHorizontal: 4,
+    },
+    codePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.primarySoft,
+      borderRadius: radius.full,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      marginTop: 14,
+    },
+    codeText: { fontSize: 14, fontWeight: '800', color: colors.primaryDark, letterSpacing: 2 },
+    codeHint: { fontSize: 11.5, color: colors.primary, fontWeight: '600' },
+    closedBanner: {
+      flexDirection: 'row',
+      gap: 12,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.line,
+      borderRadius: radius.lg,
+      padding: 14,
+      marginTop: 16,
+    },
+    closedIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closedBody: { flex: 1 },
+    closedTitle: { fontSize: 14.5, fontWeight: '700', color: colors.ink },
+    closedText: { ...type.caption, color: colors.faint, lineHeight: 18, marginTop: 3 },
+    reopenBtn: { alignSelf: 'flex-start', marginTop: 12 },
+    card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginTop: 16 },
+    budgetRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 10 },
+    spentBig: { ...type.stat, color: colors.ink },
+    ofBudget: { ...type.caption, color: colors.faint, fontSize: 13.5, marginBottom: 4 },
+    budgetBar: { marginTop: 14 },
+    budgetFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    remainOk: { fontSize: 13.5, fontWeight: '700', color: colors.success },
+    remainOver: { fontSize: 13.5, fontWeight: '700', color: colors.danger },
+    sectionTitle: { ...type.subtitle, color: colors.ink, marginTop: 26, marginBottom: 12 },
+    membersRow: { gap: 16, paddingRight: 8 },
+    memberChip: { alignItems: 'center', gap: 4, width: 60 },
+    memberName: { fontSize: 12.5, fontWeight: '600', color: colors.ink, marginTop: 2 },
+    inviteCircle: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      borderStyle: 'dashed',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    inviteLabel: { fontSize: 12.5, fontWeight: '600', color: colors.primary, marginTop: 2 },
+    catRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+    catRowBorder: { borderTopWidth: 1, borderTopColor: colors.line },
+    catIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    catBody: { flex: 1, gap: 7 },
+    catTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    catLabel: { fontSize: 13.5, fontWeight: '600', color: colors.ink },
+    catAmount: { fontSize: 13, fontWeight: '700', color: colors.slate },
+    dayLabel: { ...type.overline, color: colors.slate, marginTop: 14, marginBottom: 10 },
+    manageHint: { ...type.caption, color: colors.faint, marginBottom: 12 },
+    closeTripBtn: { marginTop: 28 },
+    closeHint: { ...type.caption, color: colors.faint, lineHeight: 18, textAlign: 'center', marginTop: 10 },
+    topBar: {
+      position: 'absolute',
+      left: 16,
+      right: 16,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    roundBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    fab: {
+      position: 'absolute',
+      right: 20,
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dialogBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(11,34,57,0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 28,
+    },
+    dialog: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      padding: 22,
+      width: '100%',
+      maxWidth: 360,
+    },
+    dialogIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    dialogTitle: { ...type.title, color: colors.ink, fontSize: 19, marginBottom: 8 },
+    dialogBody: { ...type.body, color: colors.slate, marginBottom: 18 },
+    dialogCancel: { marginTop: 8 },
+    sheetBackdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(11,34,57,0.45)',
+    },
+    actionSheet: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      paddingHorizontal: 20,
+      paddingTop: 10,
+    },
+    grabber: {
+      alignSelf: 'center',
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.line,
+      marginBottom: 16,
+    },
+    sheetTitle: { ...type.subtitle, color: colors.ink },
+    sheetSub: { ...type.caption, color: colors.faint, marginTop: 3, marginBottom: 12 },
+    actionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.line,
+    },
+    actionIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    actionIconDanger: { backgroundColor: colors.dangerSoft },
+    actionLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
+    actionLabelDanger: { color: colors.danger },
+    confirmText: { ...type.body, color: colors.slate, marginVertical: 8 },
+  });

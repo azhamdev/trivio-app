@@ -41,7 +41,7 @@ export const shadow: Record<'card' | 'fab', ViewStyle> = {
 };
 
 export const type: Record<
-  'display' | 'title' | 'subtitle' | 'body' | 'label' | 'caption' | 'overline',
+  'display' | 'title' | 'subtitle' | 'body' | 'label' | 'caption' | 'overline' | 'stat' | 'heroInput',
   TextStyle
 > = {
   display: { fontSize: 28, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
@@ -57,6 +57,10 @@ export const type: Record<
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
+  // Big money/count figures — budget totals, profile stat cards.
+  stat: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
+  // The large editable amount figure on expense-entry screens.
+  heroInput: { fontSize: 40, fontWeight: '800', color: colors.ink },
 };
 
 // Core Animated's native driver isn't available on react-native-web.

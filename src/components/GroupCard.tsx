@@ -21,7 +21,12 @@ export default function GroupCard({ group, onPress, style }: Props) {
   const closed = isTripClosed(group);
 
   return (
-    <PressableScale onPress={onPress} scaleTo={0.97} style={[styles.card, shadow.card, style]}>
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.97}
+      accessibilityRole="button"
+      accessibilityLabel={`${group.name}, ${group.destination}`}
+      style={[styles.card, shadow.card, style]}>
       <View style={closed ? styles.dimmed : undefined}>
         <Image source={{ uri: group.coverUrl }} style={styles.cover} contentFit="cover" transition={250} />
       </View>

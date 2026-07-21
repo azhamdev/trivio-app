@@ -1,33 +1,42 @@
 // Trip lifecycle: where a trip sits in time (upcoming / ongoing / ended),
 // whether it's closed, a human day-counter, and a migration that backfills the
 // date/close fields onto trips saved before this feature existed.
+//
+// Every function here is structurally typed over TripLike rather than Group,
+// so PersonalBudget — which shares the same date-range/lifecycle shape —
+// reuses this exact same implementation instead of a second copy.
 
 import { Group } from '@/types';
 import { addDays, daysBetweenInclusive, DAY_MS, startOfDay } from '@/utils/dates';
 
+export type TripLike = Pick<
+  Group,
+  'startDate' | 'endDate' | 'days' | 'closedAt' | 'closedReason' | 'createdAt'
+>;
+
 export type TripPhase = 'upcoming' | 'ongoing' | 'ended';
 
-export function tripPhase(group: Group, now: number = Date.now()): TripPhase {
+export function tripPhase<T extends TripLike>(item: T, now: number = Date.now()): TripPhase {
   const today = startOfDay(now);
-  if (today < group.startDate) return 'upcoming';
-  if (today > group.endDate) return 'ended';
+  if (today < item.startDate) return 'upcoming';
+  if (today > item.endDate) return 'ended';
   return 'ongoing';
 }
 
 // A trip is closed if a member closed it, or its dates have already passed —
 // the latter holds even before the auto-close sweep stamps `closedAt`.
-export function isTripClosed(group: Group, now: number = Date.now()): boolean {
-  return group.closedAt != null || tripPhase(group, now) === 'ended';
+export function isTripClosed<T extends TripLike>(item: T, now: number = Date.now()): boolean {
+  return item.closedAt != null || tripPhase(item, now) === 'ended';
 }
 
 // Manually-closed trips can be reopened; ones closed because the dates passed
 // cannot (reopening wouldn't change that they're over).
-export function canReopen(group: Group, now: number = Date.now()): boolean {
-  return group.closedAt != null && tripPhase(group, now) !== 'ended';
+export function canReopen<T extends TripLike>(item: T, now: number = Date.now()): boolean {
+  return item.closedAt != null && tripPhase(item, now) !== 'ended';
 }
 
-export function closedLabel(group: Group, now: number = Date.now()): string {
-  return group.closedReason === 'ended' || tripPhase(group, now) === 'ended' ? 'Ended' : 'Closed';
+export function closedLabel<T extends TripLike>(item: T, now: number = Date.now()): string {
+  return item.closedReason === 'ended' || tripPhase(item, now) === 'ended' ? 'Ended' : 'Closed';
 }
 
 export type TripDayInfo = {
@@ -38,13 +47,13 @@ export type TripDayInfo = {
   label: string;
 };
 
-export function tripDayInfo(group: Group, now: number = Date.now()): TripDayInfo {
-  const total = daysBetweenInclusive(group.startDate, group.endDate);
-  const phase = tripPhase(group, now);
+export function tripDayInfo<T extends TripLike>(item: T, now: number = Date.now()): TripDayInfo {
+  const total = daysBetweenInclusive(item.startDate, item.endDate);
+  const phase = tripPhase(item, now);
   const today = startOfDay(now);
 
   if (phase === 'upcoming') {
-    const inDays = Math.round((group.startDate - today) / DAY_MS);
+    const inDays = Math.round((item.startDate - today) / DAY_MS);
     return {
       phase,
       total,
@@ -56,7 +65,7 @@ export function tripDayInfo(group: Group, now: number = Date.now()): TripDayInfo
   if (phase === 'ended') {
     return { phase, total, currentDay: total, remainingDays: 0, label: 'Trip ended' };
   }
-  const currentDay = daysBetweenInclusive(group.startDate, today);
+  const currentDay = daysBetweenInclusive(item.startDate, today);
   return {
     phase,
     total,
@@ -68,7 +77,9 @@ export function tripDayInfo(group: Group, now: number = Date.now()): TripDayInfo
 
 // Backfill dates/close fields on trips persisted before this feature. Old trips
 // only had `days` + `createdAt`, so we anchor the range at the creation day.
-export function migrateGroup(g: Group): Group {
+// Only ever called on Group today (PersonalBudget has no legacy shape to
+// backfill), but stays generic alongside its siblings above.
+export function migrateGroup<T extends TripLike>(g: T): T {
   const days = Math.max(1, g.days || 1);
   const startDate = g.startDate ?? startOfDay(g.createdAt ?? Date.now());
   const endDate = g.endDate ?? addDays(startDate, days - 1);
@@ -82,19 +93,20 @@ export function migrateGroup(g: Group): Group {
   };
 }
 
-// Stamp `closedAt` on any open trip whose end date has passed. Returns the same
-// array reference when nothing changed so callers can skip needless writes.
-export function sweepAutoClose(
-  groups: Group[],
+// Stamp `closedAt` on any open trip/budget whose end date has passed. Returns
+// the same array reference when nothing changed so callers can skip needless
+// writes.
+export function sweepAutoClose<T extends TripLike>(
+  items: T[],
   now: number = Date.now()
-): { groups: Group[]; changed: boolean } {
+): { items: T[]; changed: boolean } {
   let changed = false;
-  const next = groups.map((g) => {
-    if (g.closedAt == null && tripPhase(g, now) === 'ended') {
+  const next = items.map((item) => {
+    if (item.closedAt == null && tripPhase(item, now) === 'ended') {
       changed = true;
-      return { ...g, closedAt: now, closedReason: 'ended' as const };
+      return { ...item, closedAt: now, closedReason: 'ended' as const };
     }
-    return g;
+    return item;
   });
-  return changed ? { groups: next, changed } : { groups, changed };
+  return changed ? { items: next, changed } : { items, changed };
 }

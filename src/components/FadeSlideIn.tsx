@@ -1,5 +1,5 @@
 import React, { ReactNode, useEffect, useRef } from 'react';
-import { Animated, Easing, StyleProp, ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, StyleProp, ViewStyle } from 'react-native';
 
 import { USE_NATIVE_DRIVER } from '@/theme/theme';
 
@@ -12,18 +12,26 @@ type Props = {
 };
 
 // Entrance animation: fades in while sliding up. Stagger lists by passing
-// an increasing delay per item.
+// an increasing delay per item. Jumps straight to the end state when the
+// user has Reduce Motion enabled.
 export default function FadeSlideIn({ children, delay = 0, duration = 420, from = 16, style }: Props) {
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(anim, {
-      toValue: 1,
-      duration,
-      delay,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      if (cancelled) return;
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: reduceMotion ? 0 : duration,
+        delay: reduceMotion ? 0 : delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: USE_NATIVE_DRIVER,
+      }).start();
+    });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

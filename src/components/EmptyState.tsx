@@ -3,7 +3,8 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import Button from '@/components/Button';
-import { colors, type } from '@/theme/theme';
+import { type } from '@/theme/theme';
+import { useThemeColors } from '@/theme/ThemeContext';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -15,13 +16,14 @@ type Props = {
 };
 
 export default function EmptyState({ icon, title, message, actionTitle, onAction, style }: Props) {
+  const colors = useThemeColors();
   return (
     <View style={[styles.wrap, style]}>
-      <View style={styles.iconCircle}>
+      <View style={[styles.iconCircle, { backgroundColor: colors.primarySoft }]}>
         <Ionicons name={icon} size={30} color={colors.primary} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={[styles.title, { color: colors.ink }]}>{title}</Text>
+      <Text style={[styles.message, { color: colors.slate }]}>{message}</Text>
       {actionTitle && onAction ? (
         <Button title={actionTitle} onPress={onAction} small style={styles.action} />
       ) : null}
@@ -35,12 +37,11 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   title: { ...type.subtitle, marginBottom: 6 },
-  message: { ...type.body, color: colors.slate, textAlign: 'center', maxWidth: 300 },
+  message: { ...type.body, textAlign: 'center', maxWidth: 300 },
   action: { marginTop: 18 },
 });

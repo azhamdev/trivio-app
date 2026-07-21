@@ -32,6 +32,14 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Trivio accesses your photos so you can scan a receipt and auto-fill the expense details.",
+          "cameraPermission": "Trivio uses your camera to scan a receipt and auto-fill the expense details.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

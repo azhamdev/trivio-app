@@ -7,17 +7,13 @@
 // production, proxy this call through your own backend and keep the key there.
 
 import { answerQuestion } from '@/ai/assistant';
+import { callOpenRouter, hasOpenRouterKey } from '@/ai/openrouterClient';
 import { categoryById } from '@/data/categories';
 import { ChatMessage, Group, User } from '@/types';
 import { formatDateRange } from '@/utils/dates';
 import { formatIDR } from '@/utils/format';
 import { groupStats } from '@/utils/stats';
 import { isTripClosed, tripDayInfo } from '@/utils/trip';
-
-const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'google/gemini-3-flash-preview';
-const TIMEOUT_MS = 45000; // free-tier models can be slow
-const API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
 
 export type AssistantReply = { text: string; offline: boolean };
 
@@ -86,44 +82,18 @@ export async function askAssistant(
     offline: true,
   });
 
-  if (!API_KEY) return offline();
+  // Quiet path for the keyless demo build — no request, no warning.
+  if (!hasOpenRouterKey) return offline();
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-        // Optional OpenRouter attribution headers
-        'HTTP-Referer': 'https://trivio.example',
-        'X-Title': 'Trivio',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0.4,
-        // Gemini 3 Flash is a reasoning model: thinking tokens count against
-        // max_tokens, so keep the budget generous and the effort low.
-        max_tokens: 2000,
-        reasoning: { effort: 'low' },
-        messages: [
-          { role: 'system', content: `${SYSTEM_PROMPT}\n\n=== TRIP DATA ===\n${buildTripContext(group, user)}` },
-          ...history.slice(-8).map((m) => ({ role: m.role, content: m.text })),
-          { role: 'user', content: question },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenRouter ${res.status}`);
-    const data = await res.json();
-    const text: string | undefined = data?.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new Error('Empty completion');
+    const text = await callOpenRouter([
+      { role: 'system', content: `${SYSTEM_PROMPT}\n\n=== TRIP DATA ===\n${buildTripContext(group, user)}` },
+      ...history.slice(-8).map((m) => ({ role: m.role, content: m.text })),
+      { role: 'user', content: question },
+    ]);
     return { text, offline: false };
   } catch (err) {
     console.warn('Trivio Assistant: falling back to offline answer —', err);
     return offline();
-  } finally {
-    clearTimeout(timer);
   }
 }

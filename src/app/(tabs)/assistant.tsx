@@ -165,6 +165,9 @@ export default function AssistantScreen() {
             <PressableScale
               onPress={() => send()}
               disabled={!input.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              accessibilityState={{ disabled: !input.trim() }}
               style={[styles.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]}>
               <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
             </PressableScale>

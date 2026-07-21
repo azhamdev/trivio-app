@@ -26,9 +26,9 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
-    const res = register({ name, email, password });
+    const res = await register({ name, email, password });
     if (!res.ok) setError(res.error);
   };
 

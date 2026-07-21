@@ -26,9 +26,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
-    const res = login({ email, password });
+    const res = await login({ email, password });
     if (!res.ok) setError(res.error);
     // On success the auth guard swaps the stack to the main app.
   };

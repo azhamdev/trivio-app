@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleProp, View, ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, StyleProp, View, ViewStyle } from 'react-native';
 
 import { colors } from '@/theme/theme';
 
@@ -26,13 +26,20 @@ export default function ProgressBar({
   const clamped = Math.max(0, Math.min(value, 1));
 
   useEffect(() => {
-    Animated.timing(anim, {
-      toValue: clamped,
-      duration: 900,
-      delay: animateDelay,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false, // width animation needs the JS driver
-    }).start();
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      if (cancelled) return;
+      Animated.timing(anim, {
+        toValue: clamped,
+        duration: reduceMotion ? 0 : 900,
+        delay: reduceMotion ? 0 : animateDelay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false, // width animation needs the JS driver
+      }).start();
+    });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clamped]);
 

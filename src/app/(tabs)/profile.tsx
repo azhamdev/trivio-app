@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -5,13 +6,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Avatar from '@/components/Avatar';
 import Button from '@/components/Button';
 import FadeSlideIn from '@/components/FadeSlideIn';
+import PressableScale from '@/components/PressableScale';
 import { useApp } from '@/context/AppContext';
 import { colors, radius, shadow, type } from '@/theme/theme';
+import { ThemePreference, useTheme } from '@/theme/ThemeContext';
 import { formatIDR } from '@/utils/format';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { value: 'light', label: 'Light', icon: 'sunny-outline' },
+  { value: 'dark', label: 'Dark', icon: 'moon-outline' },
+  { value: 'system', label: 'System', icon: 'phone-portrait-outline' },
+];
 
 export default function ProfileScreen() {
   const { user, myGroups, logout } = useApp();
   const insets = useSafeAreaInsets();
+  const { preference, setPreference } = useTheme();
 
   if (!user) return null;
 
@@ -48,6 +58,27 @@ export default function ProfileScreen() {
         </View>
       </FadeSlideIn>
 
+      <FadeSlideIn delay={130}>
+        <Text style={styles.sectionLabel}>Appearance</Text>
+        <View style={styles.themeRow}>
+          {THEME_OPTIONS.map(({ value, label, icon }) => {
+            const selected = preference === value;
+            return (
+              <PressableScale
+                key={value}
+                onPress={() => setPreference(value)}
+                accessibilityRole="button"
+                accessibilityLabel={`${label} theme`}
+                accessibilityState={{ selected }}
+                style={[styles.themeChip, selected && styles.themeChipActive]}>
+                <Ionicons name={icon} size={16} color={selected ? '#FFFFFF' : colors.slate} />
+                <Text style={[styles.themeChipText, selected && styles.themeChipTextActive]}>{label}</Text>
+              </PressableScale>
+            );
+          })}
+        </View>
+      </FadeSlideIn>
+
       <FadeSlideIn delay={160}>
         <View style={styles.aboutCard}>
           <Text style={styles.aboutTitle}>About this build</Text>
@@ -76,7 +107,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
   },
-  statValue: { fontSize: 24, fontWeight: '800', color: colors.ink },
+  statValue: { ...type.stat },
   totalCard: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -84,7 +115,24 @@ const styles = StyleSheet.create({
     marginTop: 12,
     gap: 6,
   },
-  totalValue: { fontSize: 26, fontWeight: '800', color: colors.primaryDark },
+  totalValue: { ...type.stat, color: colors.primaryDark },
+  sectionLabel: { ...type.overline, marginTop: 24, marginBottom: 12 },
+  themeRow: { flexDirection: 'row', gap: 10 },
+  themeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  themeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  themeChipText: { fontSize: 12.5, fontWeight: '600', color: colors.slate },
+  themeChipTextActive: { color: '#FFFFFF' },
   aboutCard: {
     backgroundColor: colors.primarySoft,
     borderRadius: radius.lg,

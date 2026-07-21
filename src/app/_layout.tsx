@@ -1,37 +1,53 @@
 import { Ionicons } from '@expo/vector-icons';
-import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { AppProvider, useApp } from '@/context/AppContext';
-import { colors, radius, type } from '@/theme/theme';
-
-const navTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: colors.primary,
-    background: colors.bg,
-    card: colors.card,
-    text: colors.ink,
-    border: colors.line,
-  },
-};
+import { radius, type } from '@/theme/theme';
+import { ThemeContextProvider, useTheme, useThemeColors } from '@/theme/ThemeContext';
 
 export default function RootLayout() {
   return (
-    <AppProvider>
-      <ThemeProvider value={navTheme}>
-        <StatusBar style="dark" />
-        <RootStack />
-      </ThemeProvider>
-    </AppProvider>
+    <ThemeContextProvider>
+      <AppProvider>
+        <RootThemed />
+      </AppProvider>
+    </ThemeContextProvider>
+  );
+}
+
+// Bridges our own light/dark palette into React Navigation's theme (used by
+// the Stack for default background/border colors) and the status bar style.
+function RootThemed() {
+  const colors = useThemeColors();
+  const { scheme } = useTheme();
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+
+  const navTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: colors.primary,
+      background: colors.bg,
+      card: colors.card,
+      text: colors.ink,
+      border: colors.line,
+    },
+  };
+
+  return (
+    <ThemeProvider value={navTheme}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <RootStack />
+    </ThemeProvider>
   );
 }
 
 function RootStack() {
   const { hydrated, user } = useApp();
+  const colors = useThemeColors();
 
   if (!hydrated) return <BootScreen />;
 
@@ -43,6 +59,9 @@ function RootStack() {
         <Stack.Screen name="join-group" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="group/[id]" />
         <Stack.Screen name="add-expense" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="create-personal-budget" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="budget/[id]" />
+        <Stack.Screen name="add-personal-expense" options={{ animation: 'slide_from_bottom' }} />
       </Stack.Protected>
       <Stack.Protected guard={!user}>
         <Stack.Screen name="login" />
@@ -54,27 +73,27 @@ function RootStack() {
 
 // Shown for the instant it takes to hydrate persisted state from storage.
 function BootScreen() {
+  const colors = useThemeColors();
   return (
-    <View style={styles.boot}>
-      <View style={styles.logoSquare}>
+    <View style={[styles.boot, { backgroundColor: colors.bg }]}>
+      <View style={[styles.logoSquare, { backgroundColor: colors.primary }]}>
         <Ionicons name="airplane" size={30} color="#FFFFFF" />
       </View>
-      <Text style={styles.wordmark}>Trivio</Text>
+      <Text style={[type.display, styles.wordmark, { color: colors.ink }]}>Trivio</Text>
       <ActivityIndicator color={colors.primary} style={styles.spinner} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  boot: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  boot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   logoSquare: {
     width: 64,
     height: 64,
     borderRadius: radius.lg,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  wordmark: { ...type.display, marginTop: 14 },
+  wordmark: { marginTop: 14 },
   spinner: { marginTop: 20 },
 });
