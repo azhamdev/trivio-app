@@ -26,10 +26,23 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const [submitting, setSubmitting] = useState(false);
+
   const submit = async () => {
+    if (submitting) return;
     setError(null);
+    setSubmitting(true);
     const res = await login({ email, password });
-    if (!res.ok) setError(res.error);
+    setSubmitting(false);
+    if (!res.ok) {
+      // Unconfirmed account: send them to the "check your inbox" screen instead
+      // of dead-ending on an error.
+      if (res.needsConfirmation) {
+        router.push({ pathname: '/confirm-email', params: { email: email.trim().toLowerCase() } });
+        return;
+      }
+      setError(res.error);
+    }
     // On success the auth guard swaps the stack to the main app.
   };
 
@@ -76,7 +89,7 @@ export default function LoginScreen() {
             onSubmitEditing={submit}
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button title="Log in" onPress={submit} style={styles.submit} />
+          <Button title="Log in" onPress={submit} loading={submitting} style={styles.submit} />
         </FadeSlideIn>
 
         <FadeSlideIn delay={180}>
