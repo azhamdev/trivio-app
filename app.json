@@ -17,7 +17,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.azhamrasyid.trivioapp"
     },
     "web": {
       "output": "static",
@@ -40,11 +41,18 @@
           "cameraPermission": "Trivio uses your camera to scan a receipt and auto-fill the expense details.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c2624f51-3539-434c-8aa4-ee33be88270b"
+      }
     }
   }
 }

@@ -3,6 +3,12 @@ import { Animated, Pressable, PressableProps, StyleProp, ViewStyle } from 'react
 
 import { USE_NATIVE_DRIVER } from '@/theme/theme';
 
+// Animate the Pressable itself so the touch target and the visible/animated
+// surface are the exact same element. Applying `style` to an inner wrapper
+// (e.g. an absolutely-positioned FAB) collapses the Pressable to 0×0 and makes
+// it untappable even though the child still renders in place.
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 type Props = PressableProps & {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -22,8 +28,12 @@ export default function PressableScale({ children, style, scaleTo = 0.96, ...res
     }).start();
 
   return (
-    <Pressable onPressIn={() => springTo(scaleTo)} onPressOut={() => springTo(1)} {...rest}>
-      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
-    </Pressable>
+    <AnimatedPressable
+      onPressIn={() => springTo(scaleTo)}
+      onPressOut={() => springTo(1)}
+      style={[style, { transform: [{ scale }] }]}
+      {...rest}>
+      {children}
+    </AnimatedPressable>
   );
 }
